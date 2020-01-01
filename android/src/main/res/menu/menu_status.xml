@@ -20,8 +20,26 @@
         android:title="@string/status_connected"
         app:showAsAction="always"/>
     <item
+        android:id="@+id/action_map"
+        android:icon="@drawable/ic_show_map"
+        android:tint="@android:color/white"
+        android:title="@string/status_connected"
+        app:showAsAction="always"/>
+    <item
         android:id="@+id/action_settings"
         android:title="@string/settings"
+        app:showAsAction="never"/>
+    <item
+        android:id="@+id/action_load_values"
+        android:title="@string/load_values"
+        app:showAsAction="never"/>
+    <item
+        android:id="@+id/action_save_values"
+        android:title="@string/save_values"
+        app:showAsAction="never"/>
+    <item
+        android:id="@+id/action_reset_values"
+        android:title="@string/reset_values"
         app:showAsAction="never"/>
     <item
         android:id="@+id/action_about"

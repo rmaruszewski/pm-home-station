@@ -6,38 +6,39 @@
 
 package pmstation;
 
+import android.Manifest;
+import android.app.Activity;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.PorterDuff;
 import android.graphics.drawable.Drawable;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
 import android.preference.PreferenceManager;
-import android.support.v4.app.Fragment;
-import android.support.v4.app.FragmentManager;
-import android.support.v4.app.FragmentTransaction;
-import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.WindowManager;
 import android.widget.ImageView;
-
+import android.widget.Toast;
+import androidx.annotation.RequiresApi;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.fragment.app.Fragment;
+import androidx.fragment.app.FragmentManager;
+import androidx.fragment.app.FragmentTransaction;
 import com.crashlytics.android.Crashlytics;
-
-import java.lang.ref.WeakReference;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-
+import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationServices;
 import io.fabric.sdk.android.Fabric;
 import pmstation.core.plantower.IPlanTowerObserver;
 import pmstation.core.plantower.ParticulateMatterSample;
@@ -45,16 +46,29 @@ import pmstation.plantower.BluetoothLeService;
 import pmstation.plantower.PlanTowerService;
 import pmstation.plantower.USBService;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.OutputStream;
+import java.lang.ref.WeakReference;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+
 public class MainActivity extends AppCompatActivity implements IPlanTowerObserver {
     public static final String VALUES_FRAGMENT = "VALUES_FRAGMENT";
     public static final String CHART_FRAGMENT = "CHART_FRAGMENT";
+    public static final String MAP_FRAGMENT = "MAP_FRAGMENT";
     public static final String SETTINGS_FRAGMENT = "SETTINGS_FRAGMENT";
     public static final String ABOUT_FRAGMENT = "ABOUT_FRAGMENT";
     public static final String LAST_SINGLE_PANE_FRAGMENT = "lastSinglePaneFragment";
     private static final String TAG = MainActivity.class.getSimpleName();
 
     private final List<IPlanTowerObserver> valueObservers = Collections.synchronizedList(new ArrayList<>());
-    private List<ParticulateMatterSample> values = Collections.synchronizedList(new ArrayList<>());
+    private CopyOnWriteArrayList<ParticulateMatterSample> values = new CopyOnWriteArrayList<>();
     private Menu menu;
     private ImageView smog;
     private String lastSinglePaneFragment;
@@ -97,6 +111,11 @@ public class MainActivity extends AppCompatActivity implements IPlanTowerObserve
         public void onServiceConnected(ComponentName name, IBinder service) {
             usbService = ((USBService.LocalBinder) service).getService();
             usbService.setHandler(dataHandler);
+
+            if (canAccessLocation()) {
+                usbService.startLocationUpdates();
+            }
+
             if (isEmulator()) {
                 usbService.startFakeDataThread();
             }
@@ -105,6 +124,7 @@ public class MainActivity extends AppCompatActivity implements IPlanTowerObserve
         @Override
         public void onServiceDisconnected(ComponentName name) {
             usbService.stopFakeDataThread();
+            usbService.stopLocationUpdates();
             usbService = null;
         }
     };
@@ -141,6 +161,8 @@ public class MainActivity extends AppCompatActivity implements IPlanTowerObserve
             }
         }
     };
+
+    private FusedLocationProviderClient fusedLocationClient;
 
     public static boolean isEmulator() {
         return Build.FINGERPRINT.startsWith("generic")
@@ -194,12 +216,34 @@ public class MainActivity extends AppCompatActivity implements IPlanTowerObserve
         return chartFragment;
     }
 
+    private MapFragment getDetachedMapFragment() {
+        FragmentManager fm = getSupportFragmentManager();
+        MapFragment mapFragment = (MapFragment) getSupportFragmentManager().findFragmentByTag(MAP_FRAGMENT);
+        if (mapFragment == null) {
+            mapFragment = new MapFragment();
+        } else {
+            fm.beginTransaction().remove(mapFragment).commit();
+            fm.executePendingTransactions();
+        }
+        return mapFragment;
+    }
+
     private void openSinglePaneChartFragment() {
         FragmentManager fm = getSupportFragmentManager();
         fm.popBackStack(null, FragmentManager.POP_BACK_STACK_INCLUSIVE);
         ChartFragment detailFragment = getDetatchedChartFragment();
         FragmentTransaction fragmentTransaction = fm.beginTransaction();
         fragmentTransaction.replace(R.id.single_pane, detailFragment, CHART_FRAGMENT);
+        fragmentTransaction.addToBackStack(null);
+        fragmentTransaction.commit();
+    }
+
+    private void openMapFragment() {
+        FragmentManager fm = getSupportFragmentManager();
+        fm.popBackStack(null, FragmentManager.POP_BACK_STACK_INCLUSIVE);
+        MapFragment detailFragment = getDetachedMapFragment();
+        FragmentTransaction fragmentTransaction = fm.beginTransaction();
+        fragmentTransaction.replace(R.id.single_pane, detailFragment, MAP_FRAGMENT);
         fragmentTransaction.addToBackStack(null);
         fragmentTransaction.commit();
     }
@@ -228,6 +272,12 @@ public class MainActivity extends AppCompatActivity implements IPlanTowerObserve
             if (running) {
                 getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             }
+
+            CopyOnWriteArrayList<ParticulateMatterSample> savedValues = (CopyOnWriteArrayList<ParticulateMatterSample>) savedInstanceState.getSerializable("values");
+
+            if (savedValues != null) {
+                values.addAll(savedValues);
+            }
         }
 
         FragmentManager fm = getSupportFragmentManager();
@@ -253,6 +303,29 @@ public class MainActivity extends AppCompatActivity implements IPlanTowerObserve
 
         deviceAddress = PreferenceManager.getDefaultSharedPreferences(this).getString("bt_mac", "00:25:83:00:62:E7");
         startService(BluetoothLeService.class, btConnection);
+
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
+
+        if (!canAccessLocation()) {
+            requestPermissions(new String[] {Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION}, 1337);
+        }
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.M)
+    private boolean canAccessLocation() {
+        return checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED &&
+                checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        switch (requestCode) {
+            case 1337:
+                if (canAccessLocation() && usbService != null) {
+                    usbService.startLocationUpdates();
+                }
+                break;
+        }
     }
 
     @Override
@@ -312,7 +385,7 @@ public class MainActivity extends AppCompatActivity implements IPlanTowerObserve
         this.menu = menu;
         setStatus(isRunning());
 
-        int[] arr = {R.id.action_chart, R.id.action_connected, R.id.action_disconnected};
+        int[] arr = {R.id.action_chart, R.id.action_map, R.id.action_connected, R.id.action_disconnected};
         for (int i : arr) {
             MenuItem item = menu.findItem(i);
             if (item != null) {
@@ -329,6 +402,9 @@ public class MainActivity extends AppCompatActivity implements IPlanTowerObserve
         switch (id) {
             case R.id.action_chart:
                 showChart();
+                return true;
+            case R.id.action_map:
+                showMap();
                 return true;
             case R.id.action_connected:
                 Log.d(TAG, "Trying to disconnect");
@@ -348,8 +424,54 @@ public class MainActivity extends AppCompatActivity implements IPlanTowerObserve
             case R.id.action_about:
                 showSingleFragment(ABOUT_FRAGMENT);
                 return true;
+            case R.id.action_load_values: {
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("*/*");
+                startActivityForResult(intent, 110);
+                return true;
+            }
+            case R.id.action_save_values: {
+                Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("application/octet-stream");
+                intent.putExtra(Intent.EXTRA_TITLE, "values.ser");
+                startActivityForResult(intent, 111);
+                return true;
+            }
+            case R.id.action_reset_values:
+                values.clear();
+                Toast.makeText(getApplicationContext(), "Values have been reset", Toast.LENGTH_SHORT).show();
+                return true;
         }
         return super.onOptionsItemSelected(item);
+    }
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (resultCode == Activity.RESULT_OK) {
+            if (requestCode == 111) {
+                try (OutputStream output = getApplicationContext().getContentResolver().openOutputStream(data.getData());
+                    ObjectOutputStream out = new ObjectOutputStream(output)) {
+                    out.writeObject(values);
+                    out.flush();
+                } catch (Exception e) {
+                    Toast.makeText(getApplicationContext(), "Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    Log.e(TAG, "Error while saving file", e);
+                }
+            } else if (requestCode == 110) {
+                try (InputStream input = getApplicationContext().getContentResolver().openInputStream(data.getData());
+                     ObjectInputStream in = new ObjectInputStream(input)) {
+                    CopyOnWriteArrayList<ParticulateMatterSample> o = (CopyOnWriteArrayList<ParticulateMatterSample>) in.readObject();
+                    values.clear();
+                    values.addAll(o);
+                } catch (Exception e) {
+                    Toast.makeText(getApplicationContext(), "Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    Log.e(TAG, "Error while saving file", e);
+                }
+            }
+
+        }
     }
 
     private void showChart() {
@@ -358,6 +480,14 @@ public class MainActivity extends AppCompatActivity implements IPlanTowerObserve
             return;
         }
         openSinglePaneChartFragment();
+    }
+
+    private void showMap() {
+        Fragment fragment = getSupportFragmentManager().findFragmentByTag(MAP_FRAGMENT);
+        if (fragment != null && !fragment.isDetached()) {
+            return;
+        }
+        openMapFragment();
     }
 
     private void showSingleFragment(String fragmentTag) {
@@ -406,6 +536,7 @@ public class MainActivity extends AppCompatActivity implements IPlanTowerObserve
     @Override
     protected void onSaveInstanceState(Bundle outState) {
         outState.putBoolean("running", running);
+        outState.putSerializable("values", values);
         Fragment singleFragment = getSupportFragmentManager().findFragmentById(R.id.single_pane);
         if (singleFragment == null) {
             outState.putString(LAST_SINGLE_PANE_FRAGMENT, lastSinglePaneFragment);

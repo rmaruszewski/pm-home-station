@@ -32,9 +32,8 @@ public abstract class PlanTowerService extends Service {
         preferences = PreferenceManager.getDefaultSharedPreferences(this);
     }
 
-    protected void parseData(byte[] bytes) {
+    private void parseData(ParticulateMatterSample sample, byte[] bytes) {
         workerThread = new WeakReference<>(Thread.currentThread());
-        final ParticulateMatterSample sample = PlanTowerDevice.parse(bytes);
         if (sample != null) {
             notifyActivity(sample);
         } else if (bytes.length == 12) {
@@ -62,6 +61,21 @@ public abstract class PlanTowerService extends Service {
             Log.d(TAG, "ConnectionThread sleep interrupted, most likely the sampling interval changed");
             wakeUp();
         }
+    }
+
+    protected void parseData(byte[] bytes) {
+        parseData(PlanTowerDevice.parse(bytes), bytes);
+    }
+
+    protected void parseData(byte[] bytes, double latitude, double longitude) {
+        ParticulateMatterSample sample = PlanTowerDevice.parse(bytes);
+
+        if (sample != null) {
+            sample.setLatitude(latitude);
+            sample.setLongitude(longitude);
+        }
+
+        parseData(sample, bytes);
     }
 
     protected abstract boolean wakeUp();

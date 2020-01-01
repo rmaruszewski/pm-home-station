@@ -15,19 +15,20 @@ import android.content.IntentFilter;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbManager;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.IBinder;
-import android.support.annotation.Nullable;
 import android.util.Log;
-
+import androidx.annotation.Nullable;
 import com.felhr.usbserial.UsbSerialDevice;
 import com.felhr.usbserial.UsbSerialInterface;
+import pmstation.core.plantower.PlanTowerDevice;
 
 import java.util.HashMap;
 import java.util.Map;
-
-import pmstation.core.plantower.PlanTowerDevice;
 
 public class USBService extends PlanTowerService {
     public static final String ACTION_USB_ATTACHED = "android.hardware.usb.action.USB_DEVICE_ATTACHED";
@@ -48,6 +49,33 @@ public class USBService extends PlanTowerService {
     private UsbSerialDevice serialPort;
     private boolean serialPortConnected;
     private boolean requested = false;
+    private Location location;
+    protected LocationManager locationManager;
+
+    private final LocationListener locationListener = new LocationListener() {
+        @Override
+        public void onLocationChanged(final Location location) {
+            synchronized (USBService.this) {
+                USBService.this.location = location;
+            }
+        }
+
+        @Override
+        public void onStatusChanged(String provider, int status, Bundle extras) {
+
+        }
+
+        @Override
+        public void onProviderEnabled(String provider) {
+
+        }
+
+        @Override
+        public void onProviderDisabled(String provider) {
+
+        }
+    };
+
     /*
      * Different notifications from OS will be received here (USB attached, detached, permission responses...)
      * About BroadcastReceiver: http://developer.android.com/reference/android/content/BroadcastReceiver.html
@@ -97,8 +125,17 @@ public class USBService extends PlanTowerService {
     };
 
     private IBinder binder = new LocalBinder();
-    private UsbSerialInterface.UsbReadCallback readCallback = this::parseData;
+    private UsbSerialInterface.UsbReadCallback readCallback = this::parseLocatedData;
 
+    protected void parseLocatedData(byte[] bytes) {
+        Log.i(TAG, "Current location: " + location);
+
+        if (location == null) {
+            parseData(bytes);
+        } else {
+            parseData(bytes, location.getLatitude(), location.getLongitude());
+        }
+    }
 
     public void findSerialPortDevice() {
         // This snippet will try to open the first encountered usb device connected, excluding usb root hubs
@@ -204,6 +241,23 @@ public class USBService extends PlanTowerService {
         usbManager = (UsbManager) getSystemService(Context.USB_SERVICE);
         serialPortConnected = false;
         findSerialPortDevice();
+        locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
+    }
+
+    public void startLocationUpdates() {
+        try {
+            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 10, locationListener);
+        } catch (SecurityException e) {
+            Log.e(TAG, "Unable to start GPS location updates!", e);
+        }
+    }
+
+    public void stopLocationUpdates() {
+        try {
+            locationManager.removeUpdates(locationListener);
+        } catch (SecurityException e) {
+            Log.e(TAG, "Unable to stop GPS location updates!", e);
+        }
     }
 
     private void setFilter() {
@@ -225,6 +279,9 @@ public class USBService extends PlanTowerService {
         Log.d(TAG, "USB service onDestroy");
         USBService.SERVICE_CONNECTED = false;
         unregisterReceiver(usbReceiver);
+        if (locationManager != null) {
+            locationManager.removeUpdates(locationListener);
+        }
         super.onDestroy();
     }
 

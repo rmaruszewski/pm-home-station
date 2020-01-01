@@ -8,6 +8,9 @@
     <string name="pref_sampling_interval">Częstość próbkowania</string>
     <string name="pref_main_value">Wartość główna</string>
     <string name="about">O Aplikacji</string>
+    <string name="load_values">Wczytaj wartości</string>
+    <string name="save_values">Zapisz wartości</string>
+    <string name="reset_values">Usuń wartości</string>
     <string name="authors">Autorzy</string>
     <string name="project">Projekt</string>
     <string name="project_desc">Szczegóły projektu i wymagania są dostępne&#160;<font color='#008295'><u>tutaj</u></font></string>

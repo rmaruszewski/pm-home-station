@@ -16,7 +16,8 @@ public class ParticulateMatterSample implements Serializable{
     private int pm2_5;
     private int pm10;
     private Date date;
-
+    private Double latitude;
+    private Double longitude;
 
     public ParticulateMatterSample(int pm1_0, int pm2_5, int pm10) {
         date = new Date();
@@ -39,5 +40,21 @@ public class ParticulateMatterSample implements Serializable{
 
     public int getPm10() {
         return pm10;
+    }
+
+    public void setLatitude(double latitude) {
+        this.latitude = latitude;
+    }
+
+    public void setLongitude(double longitude) {
+        this.longitude = longitude;
+    }
+
+    public Double getLatitude() {
+        return latitude;
+    }
+
+    public Double getLongitude() {
+        return longitude;
     }
 }

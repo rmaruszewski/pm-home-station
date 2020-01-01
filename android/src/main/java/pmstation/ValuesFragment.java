@@ -10,23 +10,22 @@ package pmstation;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
-import android.support.annotation.NonNull;
-import android.support.annotation.Nullable;
-import android.support.v4.app.Fragment;
-import android.support.v4.app.FragmentActivity;
-import android.support.v4.graphics.ColorUtils;
-import android.support.v7.widget.CardView;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
-
-import java.util.List;
-import java.util.Locale;
-
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.cardview.widget.CardView;
+import androidx.core.graphics.ColorUtils;
+import androidx.fragment.app.Fragment;
+import androidx.fragment.app.FragmentActivity;
 import pmstation.core.plantower.IPlanTowerObserver;
 import pmstation.core.plantower.ParticulateMatterSample;
 import pmstation.plantower.Settings;
+
+import java.util.List;
+import java.util.Locale;
 
 public class ValuesFragment extends Fragment implements IPlanTowerObserver {
     private static final String TAG = ValuesFragment.class.getSimpleName();

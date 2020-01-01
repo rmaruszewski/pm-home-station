@@ -18,6 +18,18 @@
         android:title="@string/settings"
         app:showAsAction="never"/>
     <item
+        android:id="@+id/action_load_values"
+        android:title="@string/load_values"
+        app:showAsAction="never"/>
+    <item
+        android:id="@+id/action_save_values"
+        android:title="@string/save_values"
+        app:showAsAction="never"/>
+    <item
+        android:id="@+id/action_reset_values"
+        android:title="@string/reset_values"
+        app:showAsAction="never"/>
+    <item
         android:id="@+id/action_about"
         android:title="@string/about"
         app:showAsAction="never"/>
